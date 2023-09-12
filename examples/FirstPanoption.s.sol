@@ -20,7 +20,6 @@ import {TokenId} from "@types/TokenId.sol";
  * @notice Follow along and mint your first Panoption: https://panoptic.xyz/research/introducing-panoptics-smart-contracts
  * @author Axicon Labs Limited
  */
-/// @TODO link to blog post/video when live
 contract FirstPanoption is Script {
     using TokenId for uint256;
 
@@ -29,14 +28,62 @@ contract FirstPanoption is Script {
             vm.envAddress("UNISWAP_V3_FACTORY")
         );
 
-        SemiFungiblePositionManager SFPM = SemiFungiblePositionManager();
+        SemiFungiblePositionManager SFPM = SemiFungiblePositionManager(
+            0xA9D2d9e401436DC97e937E4e66F753fbC7527a4d
+        );
 
-        PanopticFactory PANOPTIC_FACTORY = PanopticFactory();
+        PanopticFactory PANOPTIC_FACTORY = PanopticFactory(
+            0x50128402B1159ce75Cb0DFD3f509E20C41859bc0
+        );
 
         IERC20Partial WBTC = IERC20Partial(0x29f2D40B0605204364af54EC677bD022dA425d03);
         IERC20Partial DAI = IERC20Partial(0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357);
 
         vm.startBroadcast(vm.envUint("DEPLOYER_PRIVATE_KEY"));
+
+        WBTC.approve({spender: address(PANOPTIC_FACTORY), amount: type(uint256).max});
+        DAI.approve({spender: address(PANOPTIC_FACTORY), amount: type(uint256).max});
+
+        PanopticPool pp = PANOPTIC_FACTORY.deployNewPool({
+            token0: address(WBTC),
+            token1: address(DAI),
+            fee: 3000,
+            salt: 1337
+        });
+
+        WBTC.approve({spender: address(pp.collateralToken0()), amount: type(uint256).max});
+        DAI.approve({spender: address(pp.collateralToken1()), amount: type(uint256).max});
+
+        pp.collateralToken1().deposit({
+            assets: 100 * 10 ** 18,
+            receiver: vm.addr(vm.envUint("DEPLOYER_PRIVATE_KEY"))
+        });
+        pp.collateralToken0().deposit({
+            assets: 10 ** 7,
+            receiver: vm.addr(vm.envUint("DEPLOYER_PRIVATE_KEY"))
+        });
+
+        uint256[] memory positionIdList = new uint256[](1);
+        positionIdList[0] = uint256(0)
+            .addUniv3pool(SFPM.getPoolId(address(pp.univ3pool())))
+            .addLeg({
+                legIndex: 0,
+                _optionRatio: 1,
+                _asset: 1,
+                _isLong: 0,
+                _tokenType: 1,
+                _riskPartner: 0,
+                _strike: -30000,
+                _width: 2
+            });
+
+        pp.mintOptions({
+            positionIdList: positionIdList,
+            positionSize: 10 * 10 ** 18,
+            effectiveLiquidityLimitX32: 0,
+            tickLimitLow: 0,
+            tickLimitHigh: 0
+        });
 
         vm.stopBroadcast();
     }
